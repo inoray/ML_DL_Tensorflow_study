@@ -9,43 +9,32 @@
 
 ![강아지](https://kaggle2.blob.core.windows.net/competitions/kaggle/3333/media/border_collies.png)
 
-
-
 - [Plant Seedlings Classification](https://www.kaggle.com/c/plant-seedlings-classification)
   - 식물 이미지로 부터 식물 종 예측 (12종)
   - train data: 1.6GB
 
 ![식물](https://storage.googleapis.com/kaggle-media/competitions/seedlings-classify/seedlings.png)
 
-
-
 - [The Nature Conservancy Fisheries Monitoring](https://www.kaggle.com/c/the-nature-conservancy-fisheries-monitoring)
 
   - 물고기 품종 예측
   - train data: 830MB
 
-![](https://kaggle2.blob.core.windows.net/competitions/kaggle/5568/media/TNC-FF-landing-page-banner.jpg)
-
-
+![jpg](https://kaggle2.blob.core.windows.net/competitions/kaggle/5568/media/TNC-FF-landing-page-banner.jpg)
 
 - [Dogs vs. Cats Redux: Kernels Edition](https://www.kaggle.com/c/dogs-vs-cats-redux-kernels-edition/leaderboard)
 
   - 이미지의 동물이 강아지일 확률 예측
   - train data: 550MB
 
-![](https://kaggle2.blob.core.windows.net/competitions/kaggle/3362/media/woof_meow.jpg)
-
+![jpg](https://kaggle2.blob.core.windows.net/competitions/kaggle/3362/media/woof_meow.jpg)
 
 - [Humpback Whale Identification Challenge](https://www.kaggle.com/c/whale-categorization-playground)
 
   - 이미지에서 고래객체 식별
   - train data: 260MB
 
-![](https://kaggle2.blob.core.windows.net/competitions/kaggle/3333/media/happy-whale.jpg)
-
-
-
-
+![jpg](https://kaggle2.blob.core.windows.net/competitions/kaggle/3333/media/happy-whale.jpg)
 
 ## 텍스트 데이터
 
