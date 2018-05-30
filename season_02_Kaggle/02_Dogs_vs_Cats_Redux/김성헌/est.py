@@ -8,33 +8,37 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 import time
 
+import cv2
+
+# Use a custom OpenCV function to read the image, instead of the standard
+# TensorFlow `tf.read_file()` operation.
+def _read_py_function(filename, label):
+  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
+  return image_decoded, label
+
+# Use standard TensorFlow operations to resize the image to a fixed shape.
+def _resize_function(image_decoded, label):
+  image_decoded.set_shape([None, None, None])
+  image_resized = tf.image.resize_images(image_decoded, [28, 28])
+  return image_resized, label
 
 def _parse_function (filename, label):
+    #print('filename: ', filename)
     image_string = tf.read_file(filename)
-    image_decoded = tf.image.decode_image(image_string)
+    image_decoded = tf.image.decode_jpeg(image_string)
     #image_resized = tf.image.resize_images(image_decoded, [150, 150])
+    image_decoded.set_shape([150, 150, 3])
     return image_decoded, label
 
 
-def input_fn(img_files, labels):
-    dataset = tf.data.Dataset.from_tensor_slices((img_files, labels))
-    dataset = dataset.shuffle(1000).repeat().batch(16)
-    dataset = dataset.map(_parse_function)
+def input_fn(filenames, labels, batch_size = 16):
+    dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
+    dataset = dataset.shuffle(1000).repeat().batch(batch_size)
+    #dataset = dataset.map(_parse_function)
+    dataset = dataset.map(lambda filename, label: tuple(tf.py_func(
+        _read_py_function, [filename, label], [tf.uint8, label.dtype])))
 
     return dataset
-    '''
-    iterator = dataset.make_one_shot_iterator()
-    batch = iterator.get_next()
-
-    data = tf.decode_csv(batch, [[0]]*11)
-    train = tf.stack(data[1:], axis=1)
-    label = tf.expand_dims(data[0], axis=1)
-
-    train = tf.cast(train, tf.float32)
-    label = tf.cast(label, tf.float32)
-
-    return {"x": train}, label
-    '''
 
 
 def model_fn(features, labels, mode):
@@ -93,46 +97,47 @@ def model_fn(features, labels, mode):
                 eval_metric_ops=eval_metric_ops)
 
 
-est = tf.estimator.Estimator(model_fn)
+if __name__ == "__main__":
+    est = tf.estimator.Estimator(model_fn)
 
-DATA_DIR = "../data/"
-TRAIN_DIR = DATA_DIR + "train_resize/"
+    DATA_DIR = "../data/"
+    TRAIN_DIR = DATA_DIR + "train_resize/"
 
-train_images = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR)]
-train_dogs = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'dog' in i]
-train_cats = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'cat' in i]
+    train_images = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR)]
+    train_dogs = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'dog' in i]
+    train_cats = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'cat' in i]
 
-print("train_dogs: ", len(train_dogs))
-print("train_cats: ", len(train_cats))
+    print("train_dogs: ", len(train_dogs))
+    print("train_cats: ", len(train_cats))
 
-train_dogs = train_dogs[:100]
-train_cats = train_cats[:100]
+    train_dogs = train_dogs[:100]
+    train_cats = train_cats[:100]
 
-train_dog_cat = train_dogs + train_cats
+    train_dog_cat = train_dogs + train_cats
 
-label_dog = [0 for i in range(len(train_dogs))]
-label_cat = [1 for i in range(len(train_cats))]
-label = label_dog + label_cat
-label_one_hot = np.eye(2)[label]
+    label_dog = [0 for i in range(len(train_dogs))]
+    label_cat = [1 for i in range(len(train_cats))]
+    label = label_dog + label_cat
+    label_one_hot = np.eye(2)[label]
 
-x_train, x_valid, y_train, y_valid = train_test_split (
-    train_dog_cat, label_one_hot, test_size=0.3, random_state=42)
+    x_train, x_valid, y_train, y_valid = train_test_split (
+        train_dog_cat, label_one_hot, test_size=0.3, random_state=42)
 
-print("train: ", len(x_train))
-print("valid: ", len(x_valid))
+    print("train: ", len(x_train))
+    print("valid: ", len(x_valid))
 
 
-for epoch in range(10):
-    est.train(input_fn(x_train, y_train))
-    est.evaluate(input_fn(x_train, y_train))
+    for epoch in range(10):
+        est.train(input_fn(x_train, y_train))
+        est.evaluate(input_fn(x_train, y_train))
 
-'''
-pred_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": np.array([list(range(10))], np.float32)},
-        num_epochs=1,
-        shuffle=False)
-
-predictions = est.predict(pred_input_fn)
-for i in predictions:
-    print(i["prob"])
     '''
+    pred_input_fn = tf.estimator.inputs.numpy_input_fn(
+            x={"x": np.array([list(range(10))], np.float32)},
+            num_epochs=1,
+            shuffle=False)
+
+    predictions = est.predict(pred_input_fn)
+    for i in predictions:
+        print(i["prob"])
+        '''
