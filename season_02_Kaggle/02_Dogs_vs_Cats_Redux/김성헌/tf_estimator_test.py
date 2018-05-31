@@ -1,3 +1,6 @@
+"""텐서플로 estimator 사용 테스트
+    error 발생함!!!
+"""
 import cv2
 import os
 import matplotlib.pyplot as plt

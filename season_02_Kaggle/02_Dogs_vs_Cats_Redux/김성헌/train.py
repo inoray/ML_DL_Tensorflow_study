@@ -1,120 +1,15 @@
-import os
-import time
 import tensorflow as tf
-from model_vgg import Model_Vgg19
+import time
 
+def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16):
+    """학습 수행
 
-class DataSet:
-    '''
-    queue runner 사용
-    '''
-    def __init__(self, sess, dataset, batch_size=16):
-        self._sess = sess
-        self._dataset = dataset
-        self._batch_size = batch_size
-
-        input_queue = tf.train.slice_input_producer(self._dataset)
-
-        image_files = tf.read_file(input_queue[0])
-
-        image_list = tf.image.decode_jpeg(image_files, channels=3)
-        image_list.set_shape([150, 150, 3])
-
-        if len(dataset) == 1:
-            self._batch = tf.train.batch([image_list], batch_size=batch_size)
-        elif len(dataset) == 2:
-            self._batch = tf.train.batch([image_list, input_queue[1]], batch_size=batch_size)
-
-    def countData(self):
-        return len(self._dataset[0])
-
-    def countBatch(self):
-        return int(self.countData() / self._batch_size) + 1
-
-    def start(self):
-        self._coord = tf.train.Coordinator()
-        self._threads = tf.train.start_queue_runners(sess=self._sess, coord=self._coord)
-
-    def init(self):
-        print()
-
-    def stop(self):
-        self._coord.request_stop()
-        self._coord.join(self._threads)
-
-    def next_batch(self):
-        return self._sess.run(self._batch)
-
-
-def _parse_function (filename, label):
-    #print('filename: ', filename)
-    image_string = tf.read_file(filename)
-    image_decoded = tf.image.decode_jpeg(image_string)
-    #image_resized = tf.image.resize_images(image_decoded, [150, 150])
-    image_decoded.set_shape([150, 150, 3])
-    return image_decoded, label
-
-
-def input_fn(filenames, labels, batch_size = 16):
-    dataset = tf.data.Dataset.from_tensor_slices((filenames, labels))
-    dataset = dataset.shuffle(1000).repeat().batch(batch_size)
-    dataset = dataset.map(_parse_function)
-
-    return dataset
-
-import cv2
-
-# Use a custom OpenCV function to read the image, instead of the standard
-# TensorFlow `tf.read_file()` operation.
-def _read_py_function(filename, label):
-  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
-  return image_decoded, label
-
-# Use standard TensorFlow operations to resize the image to a fixed shape.
-def _resize_function(image_decoded, label):
-  image_decoded.set_shape([None, None, None])
-  image_resized = tf.image.resize_images(image_decoded, [28, 28])
-  return image_resized, label
-
-class DataSet2:
-    '''
-    tf.dataset 사용
-    '''
-    def __init__(self, sess, dataset, batch_size=16):
-        self._sess = sess
-        self._dataset = dataset
-        self._batch_size = batch_size
-
-        tfdataset = tf.data.Dataset.from_tensor_slices((dataset[0], dataset[1]))
-        tfdataset = tfdataset.shuffle(1000).repeat().batch(batch_size)
-        #tfdataset = tfdataset.map(_parse_function)
-        tfdataset = tfdataset.map(lambda filename, label: tuple(tf.py_func(
-        _read_py_function, [filename, label], [tf.uint8, label.dtype])))
-
-        self.iterator = tfdataset.make_one_shot_iterator()
-        self.next_example, self.next_label = self.iterator.get_next()
-
-
-    def countData(self):
-        return len(self._dataset[0])
-
-    def countBatch(self):
-        return int(self.countData() / self._batch_size) + 1
-
-    def start(self):
-        self._coord = tf.train.Coordinator()
-        self._threads = tf.train.start_queue_runners(sess=self._sess, coord=self._coord)
-
-    def init(self):
-        _ = self._sess.run(self.iterator._initializer)
-
-    def stop(self):
-        print()
-
-    def next_batch(self):
-        return self._sess.run([self.next_example, self.next_label])
-
-def train (model, train_dataset, valid_dataset, learning_rate, epochs):
+    args:
+        train_dataset: 학습용 데이터. data.Dataset_image
+        valid_dataset: 평가용 데이터. data.Dataset_image
+        learning_rate: learning rate
+        epochs: epochs
+    """
     sess = model.sess
     sess.run(tf.global_variables_initializer())
     saver = tf.train.Saver()
@@ -135,8 +30,6 @@ def train (model, train_dataset, valid_dataset, learning_rate, epochs):
     train_global_step = 0
     valid_global_step = 0
 
-    #train_dataset.start()
-    #valid_dataset.start()
     print('Learning started. It takes sometime.')
     for epoch in range(epochs):
         avg_cost_train = 0
@@ -149,7 +42,7 @@ def train (model, train_dataset, valid_dataset, learning_rate, epochs):
 
         start_time_epoch = time.time()
 
-        train_dataset.init()
+        train_dataset.init_iterator()
         for i in range(total_batch_train):
             batch_x_image, batch_y = train_dataset.next_batch()
 
@@ -163,7 +56,7 @@ def train (model, train_dataset, valid_dataset, learning_rate, epochs):
 
         accuracy_train = correct_count_train / train_count
 
-        valid_dataset.init()
+        valid_dataset.init_iterator()
         for i in range(total_batch_valid):
             batch_x_image, batch_y = valid_dataset.next_batch ()
             c = model.get_cost(batch_x_image, batch_y)
@@ -189,28 +82,133 @@ def train (model, train_dataset, valid_dataset, learning_rate, epochs):
     print('Learning Finished!')
     print("--- %.2f seconds ---" %(time.time() - start_time))
 
-    #train_dataset.stop()
-    #valid_dataset.stop()
 
-def eval(model, eval_dataset, epochs):
-    sess = model.sess
-    sess.run(tf.global_variables_initializer())
+def eval(model, eval_dataset):
+    """evaluation 수행
 
+    args:
+        eval_dataset: 평가용 데이터. data.Dataset_image
+    """
     start_time = time.time()
+    avg_cost = 0
     eval_count = eval_dataset.countData()
     total_batch_eval = eval_dataset.countBatch()
-    print('eval_count: ', eval_count, 'total_batch_eval: ', total_batch_eval)
+    print('eval_count: ', eval_count, ', total_batch_eval: ', total_batch_eval)
 
-    #eval_dataset.start()
-    eval_dataset.init()
+    eval_dataset.init_iterator()
     correct_count = 0
     for i in range(total_batch_eval):
         batch_x_image, batch_y = eval_dataset.next_batch()
+        c = model.get_cost(batch_x_image, batch_y)
+        avg_cost += c / total_batch_eval
         correct_count += model.countCorrect(batch_x_image, batch_y)
 
-    #accuracy = correct_count / eval_count
-    accuracy = correct_count / (total_batch_eval * eval_dataset._batch_size)
+    accuracy = correct_count / eval_count
 
-    print("eval-accuracy: %.4f" % accuracy)
+    print('Evaluation Finished!')
+    print("cost: ", "{:.9f}".format(avg_cost), ", accuracy: %.4f" % accuracy)
     print("--- %.2f seconds ---" %(time.time() - start_time))
-    #eval_dataset.stop()
+
+    return avg_cost, accuracy
+
+
+def predict(model, test_dataset):
+    """predict 수행
+
+    args:
+        test_dataset: 테스트용 데이터. data.Dataset_image
+    """
+    start_time = time.time()
+
+    test_count = test_dataset.countData()
+    total_batch = test_dataset.countBatch()
+
+    test_dataset.init_iterator()
+    predict_list = []
+    probability_list = []
+    for i in range(total_batch):
+        batch_x_image = test_dataset.next_batch()
+        batch_predict = model.predict(batch_x_image)
+        batch_prob = model.probability(batch_x_image)
+        predict_list.extend(batch_predict)
+        probability_list.extend(batch_prob)
+
+    print("--- %.2f seconds ---" %(time.time() - start_time))
+    return predict_list, probability_list
+
+
+if __name__ == "__main__":
+
+    """
+    train, eval 예제
+    """
+    import os
+    from sklearn.model_selection import train_test_split
+    import data
+    import model
+    import numpy as np
+
+    # 학습데이터 준비
+    DATA_DIR = "../data/"
+    TRAIN_DIR = DATA_DIR + "train_resize/"
+
+    train_images = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR)]
+    train_dogs = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'dog' in i]
+    train_cats = [TRAIN_DIR+i for i in os.listdir(TRAIN_DIR) if 'cat' in i]
+
+    print("train_dogs: ", len(train_dogs))
+    print("train_cats: ", len(train_cats))
+
+    train_dogs = train_dogs[:20]
+    train_cats = train_cats[:20]
+
+    train_dog_cat = train_dogs + train_cats
+
+    label_dog = [0 for i in range(len(train_dogs))]
+    label_cat = [1 for i in range(len(train_cats))]
+    label = label_dog + label_cat
+    label_one_hot = np.eye(2)[label]
+
+    # 학습, 평가 데이터 분리
+    x_train, x_valid, y_train, y_valid = train_test_split (
+        train_dog_cat, label_one_hot, test_size=0.3, random_state=42)
+
+    print("train: ", len(x_train))
+    print("valid: ", len(x_valid))
+
+    learning_rate = 0.0001
+    epochs = 2
+    batch_size = 10
+
+    # dataset 생성
+    train_dataset = data.Dataset_image([x_train, y_train], batch_size = batch_size)
+    valid_dataset = data.Dataset_image([x_valid, y_valid], batch_size = batch_size)
+
+    sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth =True)))
+    model = model.Vgg19(sess, "model")
+    model.build_net([150, 150, 3])
+
+    # 학습 및 평가 수행
+    train (model, train_dataset, valid_dataset, learning_rate, epochs)
+    eval (model, valid_dataset)
+
+    """
+    predict 예제
+    """
+    import pandas as pd
+    import re
+
+    TEST_DIR = DATA_DIR + "test_resize/"
+    test_images =  [TEST_DIR+i for i in os.listdir(TEST_DIR)]
+    test_images.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])
+
+    test_images = test_images[:10]
+
+    # dataset 생성 및 predict
+    test_dataset = data.Dataset_image([test_images], batch_size = batch_size)
+    predict_list, probability_list = predict(model, test_dataset)
+
+    # 결과 저장
+    hp = np.array(probability_list)
+    df = pd.DataFrame({"id": range(1, len(probability_list) + 1), "label": hp[:, 0], "class": predict_list})
+    df.to_csv('predict.csv', index=False)
