@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import math
 
 class Dataset_image:
     def __init__(self, dataset, batch_size):
@@ -33,7 +34,7 @@ class Dataset_image:
         return self._data_count
 
     def countBatch(self):
-        return int(self.countData() / self._batch_size) + 1
+        return math.ceil(self.countData() / self._batch_size)
 
     def getBatchRange (self, data_size, batch_size, batch_idx):
         begin_idx = batch_idx * batch_size
@@ -41,18 +42,21 @@ class Dataset_image:
         end_idx = min(end_idx, data_size)
         return begin_idx, end_idx
 
-    def getImageData (self, image_file_list, image_shape=[150, 150, 3]):
+    def getImageData (self, image_file_list, image_shape=[150, 150, 3], resize=False):
         data = np.ndarray((len(image_file_list), image_shape[0], image_shape[1], image_shape[2]), dtype=np.uint8)
         for i, image_file in enumerate(image_file_list):
-            data[i] = cv2.imread(image_file)
+            if resize == False:
+                data[i] = cv2.imread(image_file)
+            else:
+                data[i] = cv2.resize(cv2.imread(image_file), (image_shape[1], image_shape[0]), interpolation=cv2.INTER_CUBIC)
         return data
 
     def next_batch(self):
         begin_idx, end_idx = self.getBatchRange(self._data_count, self._batch_size, self._batch_idx)
-        self._batch_idx += self._batch_idx
+        self._batch_idx += 1
 
         batch_x = self._dataset[0][begin_idx : end_idx]
-        batch_x_image = self.getImageData(batch_x, self._image_shape)
+        batch_x_image = self.getImageData(batch_x, self._image_shape, self._resize)
 
         if self._dataset_count == 1:
             return batch_x_image

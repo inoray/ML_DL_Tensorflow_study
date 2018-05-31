@@ -1,12 +1,12 @@
 import tensorflow as tf
 
-class Vgg19:
+class Vgg:
 
     def __init__(self, sess, name):
         self.sess = sess
         self.name = name
 
-    def build_net(self, image_shape=[150, 150, 3]):
+    def build_net(self, image_shape=[150, 150, 3], class_count=2):
         """모델빌드
 
         args:
@@ -19,7 +19,7 @@ class Vgg19:
 
             # input place holders
             self.X = tf.placeholder(tf.float32, [None, image_shape[0], image_shape[1], image_shape[2]])
-            self.Y = tf.placeholder(tf.float32, [None, 2])
+            self.Y = tf.placeholder(tf.float32, [None, class_count])
             self.learning_rate = tf.placeholder(tf.float32)
 
             # Convolutional Layer #1
@@ -64,7 +64,7 @@ class Vgg19:
             dropout7 = tf.layers.dropout(inputs=fc7, rate=0.5, training=self.training)
 
             # Logits (no activation) Layer: L7 Final FC 625 inputs -> 2 outputs
-            self.logits = tf.layers.dense(inputs=dropout7, units=2)
+            self.logits = tf.layers.dense(inputs=dropout7, units=class_count)
 
         # define cost/loss & optimizer
         self.cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.Y))

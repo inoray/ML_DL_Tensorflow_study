@@ -1,5 +1,6 @@
 import tensorflow as tf
 import time
+import os
 
 def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16):
     """학습 수행
@@ -77,7 +78,7 @@ def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16)
         if (epoch + 1) % 10 == 0 or (epoch + 1) == epochs:
             checkpoint_path = os.path.join('./model/', 'model.ckpt')
             saver.save(sess, checkpoint_path, global_step=epoch + 1)
-            print('Save checkpoint  : %s' %(checkpoint_path))
+            print('Save checkpoint: %s' %(checkpoint_path))
 
     print('Learning Finished!')
     print("--- %.2f seconds ---" %(time.time() - start_time))
@@ -185,8 +186,8 @@ if __name__ == "__main__":
     valid_dataset = data.Dataset_image([x_valid, y_valid], batch_size = batch_size)
 
     sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth =True)))
-    model = model.Vgg19(sess, "model")
-    model.build_net([150, 150, 3])
+    model = model.Vgg(sess, "model")
+    model.build_net(image_shape=[150, 150, 3], class_count=2)
 
     # 학습 및 평가 수행
     train (model, train_dataset, valid_dataset, learning_rate, epochs)
