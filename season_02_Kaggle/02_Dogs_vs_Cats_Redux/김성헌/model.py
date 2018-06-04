@@ -22,6 +22,7 @@ class Vgg:
             self.Y = tf.placeholder(tf.float32, [None, class_count])
             self.learning_rate = tf.placeholder(tf.float32)
 
+            '''
             # Convolutional Layer #1
             conv1_1 = tf.layers.conv2d(inputs=self.X, filters=32, kernel_size=[3, 3], padding="SAME", activation=tf.nn.relu)
             conv1_2 = tf.layers.conv2d(inputs=conv1_1, filters=32, kernel_size=[3, 3], padding="SAME", activation=tf.nn.relu)
@@ -53,7 +54,7 @@ class Vgg:
 
             # 150 -> 75 -> 38 -> 19 -> 10 -> 5
             # Dense Layer with Relu
-            flat6 = tf.layers.flatten(pool3) #tf.reshape(pool3, [-1, 256 * 19 * 19])
+            flat6 = tf.layers.flatten(net) #tf.reshape(pool3, [-1, 256 * 19 * 19])
             #fc6 = tf.layers.dense(inputs=flat6, units=6400, activation=tf.nn.relu, kernel_initializer=initializer)
             fc6 = tf.layers.dense(inputs=flat6, units=1000, activation=tf.nn.relu, kernel_initializer=initializer)
             dropout6 = tf.layers.dropout(inputs=fc6, rate=0.5, training=self.training)
@@ -65,12 +66,49 @@ class Vgg:
 
             # Logits (no activation) Layer: L7 Final FC 625 inputs -> 2 outputs
             self.logits = tf.layers.dense(inputs=dropout7, units=class_count)
+            '''
+
+            dropout_rate = 0.5
+            seed = 777
+            net = self.X
+            n_filters = 64
+            for i in range(3):
+                net = self.conv_bn_activ_dropout(name="3x3conv{}-{}".format(i+1, 1), x=net,
+                                            n_filters=n_filters, kernel_size=[3,3], strides=1,
+                                            dropout_rate=dropout_rate, training=self.training, seed=seed)
+                net = self.conv_bn_activ_dropout(name="3x3conv{}-{}".format(i+1, 2), x=net,
+                                            n_filters=n_filters, kernel_size=[3,3], strides=1,
+                                            dropout_rate=dropout_rate, training=self.training, seed=seed)
+                if i == 2:
+                    net = self.conv_bn_activ_dropout(name="1x1conv", x=net,
+                                                n_filters=n_filters, kernel_size=[1,1], strides=1,
+                                                dropout_rate=dropout_rate, training=self.training, seed=seed)
+                n_filters *= 2
+                net = self.conv_bn_activ_dropout(name="5x5stridepool{}".format(i+1), x=net, n_filters=n_filters,
+                                        kernel_size=[5,5], strides=2, dropout_rate=dropout_rate,
+                                        training=self.training, seed=seed)
+
+            initializer = tf.contrib.layers.xavier_initializer()
+
+            net = tf.contrib.layers.flatten(net)
+            # Logits (no activation) Layer: L7 Final FC 625 inputs -> 2 outputs
+            self.logits = tf.layers.dense(inputs=net, units=class_count, kernel_initializer=initializer)
 
         # define cost/loss & optimizer
         self.cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.Y))
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
-        self.softmax_out = tf.nn.softmax(self.logits)
+        global_step = tf.Variable(0, trainable=False)
+        learningRate = tf.train.exponential_decay(learning_rate=self.learning_rate,
+                                                global_step= global_step,
+                                                decay_steps=5000,
+                                                decay_rate= 0.1,
+                                                staircase=True)
+
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.cost, global_step=global_step, name="optimizer")
+
+        self.probability = tf.nn.softmax(self.logits)
         self.prediction = tf.argmax(tf.nn.softmax(self.logits), axis=1)
         correct_prediction = tf.equal(self.prediction, tf.argmax(self.Y, axis=1))
         self.correct_count = tf.reduce_sum(tf.cast(correct_prediction, tf.float32))
@@ -81,23 +119,25 @@ class Vgg:
         tf.summary.scalar("accuracy", self.accuracy)
         self.summary = tf.summary.merge_all()
 
-    def probability(self, x_test):
-        return self.sess.run(self.softmax_out, feed_dict={self.X: x_test, self.training: False})
+    def conv_bn_activ_dropout(self, name, x, n_filters, kernel_size, strides, dropout_rate, training, seed,
+                            padding='SAME', activ_fn=tf.nn.relu):
+        with tf.variable_scope(name):
+            net = tf.layers.conv2d(x, n_filters, kernel_size, strides=strides, padding=padding, use_bias=False,
+                                kernel_initializer=tf.contrib.layers.xavier_initializer(seed=seed))
+            net = tf.layers.batch_normalization(net, training=training)
+            net = activ_fn(net)
+            if dropout_rate > 0.0:
+                net = tf.layers.dropout(net, rate=dropout_rate, training=training, seed=seed)
+        return net
 
     def predict(self, x_test):
-        return self.sess.run(self.prediction, feed_dict={self.X: x_test, self.training: False})
+        return self.sess.run([self.prediction, self.probability], feed_dict={self.X: x_test, self.training: False})
 
-    def countCorrect(self, x_test, y_test):
-        return self.sess.run(self.correct_count, feed_dict={self.X: x_test, self.Y: y_test, self.training: False})
+    def eval(self, x_test, y_test):
+        return self.sess.run([self.accuracy, self.cost], feed_dict={self.X: x_test, self.Y: y_test, self.training: False})
 
-    def get_accuracy(self, x_test, y_test):
-        return self.sess.run(self.accuracy, feed_dict={self.X: x_test, self.Y: y_test, self.training: False})
-
-    def get_cost(self, x_test, y_test):
-        return self.sess.run(self.cost, feed_dict={self.X: x_test, self.Y: y_test, self.training: False})
+    def train(self, x_data, y_data, learning_rate, training=True):
+        return self.sess.run([self.summary, self.accuracy, self.cost, self.optimizer], feed_dict={self.X: x_data, self.Y: y_data, self.learning_rate: learning_rate, self.training: training})
 
     def _summary(self, x_test, y_test):
         return self.sess.run(self.summary, feed_dict={self.X: x_test, self.Y: y_test, self.training: False})
-
-    def train(self, x_data, y_data, learning_rate, training=True):
-        return self.sess.run([self.summary, self.cost, self.optimizer], feed_dict={self.X: x_data, self.Y: y_data, self.learning_rate: learning_rate, self.training: training})

@@ -2,7 +2,7 @@ import tensorflow as tf
 import time
 import os
 
-def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16):
+def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16, tensorboard_logdir="./log"):
     """학습 수행
 
     args:
@@ -25,11 +25,10 @@ def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16)
 
     # usage
     # tensorboard --logdir=./log
-    train_writer = tf.summary.FileWriter("./log/train")
-    valid_writer = tf.summary.FileWriter("./log/valid")
+    train_writer = tf.summary.FileWriter(tensorboard_logdir + "/train")
+    valid_writer = tf.summary.FileWriter(tensorboard_logdir + "/valid")
     train_writer.add_graph(sess.graph)
     train_global_step = 0
-    valid_global_step = 0
 
     print('Learning started. It takes sometime.')
     for epoch in range(epochs):
@@ -38,37 +37,30 @@ def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16)
         accuracy_train = 0
         accuracy_valid = 0
 
-        correct_count_train = 0
-        correct_count_valid = 0
-
         start_time_epoch = time.time()
 
         train_dataset.init_iterator()
         for i in range(total_batch_train):
             batch_x_image, batch_y = train_dataset.next_batch()
-
-            s, c, _ = model.train(batch_x_image, batch_y, learning_rate)
+            s, a, c, _ = model.train(batch_x_image, batch_y, learning_rate)
+            accuracy_train += a / total_batch_train
             avg_cost_train += c / total_batch_train
-            correct_count_train += model.countCorrect(batch_x_image, batch_y)
 
             train_global_step += 1
-            if train_global_step % 1000:
+            if train_global_step % 1000 == 0:
                 train_writer.add_summary(s, global_step=train_global_step)
-
-        accuracy_train = correct_count_train / train_count
 
         valid_dataset.init_iterator()
         for i in range(total_batch_valid):
             batch_x_image, batch_y = valid_dataset.next_batch ()
-            c = model.get_cost(batch_x_image, batch_y)
+            a, c = model.eval(batch_x_image, batch_y)
+            accuracy_valid += a / total_batch_valid
             avg_cost_valid += c / total_batch_valid
 
-            correct_count_valid += model.countCorrect(batch_x_image, batch_y)
-            #s = model.summary(batch_x_image, batch_y)
-            #valid_writer.add_summary(s, global_step=valid_global_step)
-            #valid_global_step += 1
-
-        accuracy_valid = correct_count_valid / valid_count
+        summary = tf.Summary(value=[
+            tf.Summary.Value(tag="cost", simple_value=avg_cost_valid),
+            tf.Summary.Value(tag="accuracy", simple_value=accuracy_valid)])
+        valid_writer.add_summary(summary, train_global_step)
 
         print('Epoch:', '%04d' % (epoch + 1)
             , 'train [cost: ', '{:.9f}'.format(avg_cost_train), ', acc: %.4f]' % accuracy_train
@@ -92,19 +84,17 @@ def eval(model, eval_dataset):
     """
     start_time = time.time()
     avg_cost = 0
+    accuracy = 0
     eval_count = eval_dataset.countData()
     total_batch_eval = eval_dataset.countBatch()
     print('eval_count: ', eval_count, ', total_batch_eval: ', total_batch_eval)
 
     eval_dataset.init_iterator()
-    correct_count = 0
     for i in range(total_batch_eval):
         batch_x_image, batch_y = eval_dataset.next_batch()
-        c = model.get_cost(batch_x_image, batch_y)
+        a, c = model.eval(batch_x_image, batch_y)
+        accuracy += a / total_batch_eval
         avg_cost += c / total_batch_eval
-        correct_count += model.countCorrect(batch_x_image, batch_y)
-
-    accuracy = correct_count / eval_count
 
     print('Evaluation Finished!')
     print("cost: ", "{:.9f}".format(avg_cost), ", accuracy: %.4f" % accuracy)
@@ -121,7 +111,6 @@ def predict(model, test_dataset):
     """
     start_time = time.time()
 
-    test_count = test_dataset.countData()
     total_batch = test_dataset.countBatch()
 
     test_dataset.init_iterator()
@@ -129,8 +118,7 @@ def predict(model, test_dataset):
     probability_list = []
     for i in range(total_batch):
         batch_x_image = test_dataset.next_batch()
-        batch_predict = model.predict(batch_x_image)
-        batch_prob = model.probability(batch_x_image)
+        batch_predict, batch_prob = model.predict(batch_x_image)
         predict_list.extend(batch_predict)
         probability_list.extend(batch_prob)
 
