@@ -29,6 +29,7 @@ def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16,
     valid_writer = tf.summary.FileWriter(tensorboard_logdir + "/valid")
     train_writer.add_graph(sess.graph)
     train_global_step = 0
+    max_valid_acc = 0.
 
     print('Learning started. It takes sometime.')
     for epoch in range(epochs):
@@ -67,7 +68,9 @@ def train (model, train_dataset, valid_dataset, learning_rate=0.0001, epochs=16,
             , 'valid [cost: ', '{:.9f}'.format(avg_cost_valid), ', acc: %.4f]' % accuracy_valid
             , " %.2f seconds" % (time.time() - start_time_epoch))
 
-        if (epoch + 1) % 10 == 0 or (epoch + 1) == epochs:
+        #if (epoch + 1) % 10 == 0 or (epoch + 1) == epochs:
+        if accuracy_valid > max_valid_acc:
+            max_valid_acc = accuracy_valid
             checkpoint_path = os.path.join('./model/', 'model.ckpt')
             saver.save(sess, checkpoint_path, global_step=epoch + 1)
             print('Save checkpoint: %s' %(checkpoint_path))
